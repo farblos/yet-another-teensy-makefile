@@ -17,10 +17,12 @@ Unique selling points and other facts:
   Teensyduino installation
 
 - Initially based on and inspired by
-  https://github.com/apmorton/teensy-template and the makefile
-  that comes with Teensyduino itself
+  [apmorton/teensy-template](https://github.com/apmorton/teensy-template)
+  and the makefile that comes with Teensyduino itself
 
-- Tested with Arduino 1.8.10, Teensyduino 1.48, and Teensy 3.5
+- Tested with Arduino 1.8.10, Teensyduino 1.48, and Teensy 3.5,
+  but should be usable for all Teensy boards declared in
+  Teensyduino's `boards.txt`
 
 - Tested on Debian "stretch"
 
@@ -93,19 +95,21 @@ YAT makefile directly as needed.
     ```
 
   In addition, target `install` copies the YAT makefile to the
-  project base directory, overwriting any other file named
-  `GNUmakefile` there, and configures the installation-time
-  variables in it.
+  project base directory, renaming any other file `GNUmakefile`
+  there to `GNUmakefile.bak`, and configures the
+  installation-time variables in it.
 
 - (If you have specified `NO_TEENSY_TOOLS=1` above:)  
   Install Debian packages `gcc-arm-none-eabi`,
-  `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib` (or
-  comparable packages on other distros).
+  `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib`
+  (for Teensy 3.x and 4.x boards) or Debian packages `gcc-avr`,
+  `avr-libc` (for Teensy 2.x).  Other distros may provide similar
+  packages.
 
 - (If you have specified `NO_TEENSY_TOOLS=1` above:)  
   Build `teensy_loader_cli` from
-  https://github.com/PaulStoffregen/teensy_loader_cli and copy it
-  to `<teensy-base-dir>/hardware/tools`.
+  [PaulStoffregen/teensy_loader_cli](https://github.com/PaulStoffregen/teensy_loader_cli)
+  and copy it to `<teensy-base-dir>/hardware/tools`.
 
 - After executing above steps, the Arduino base directory is no
   longer required for using the YAT makefile and can be removed.
@@ -143,6 +147,11 @@ where the project-specific makefiles are structured like this:
     include ../GNUmakefile
 ```
 
+If you decide to directly modify the YAT makefile, keep in mind
+that target `install` overwrites any previously present YAT
+makefile in your project base directory.  (It keeps one backup of
+the old YAT makefile, though.)
+
 ### Configuration Variables
 
 There are three levels of configuration variables: top-level,
@@ -167,9 +176,10 @@ configured to reasonable default values (at least as reasonable
 as determined by Teensyduino's `board.txt`).  You can override
 these default values freely and at all levels.  Remember, though,
 that the compilation of the Teensy core libraries depends on your
-board and on the menu-level configuration variables.  If you
+board **and** on the menu-level configuration variables.  If you
 change these, you must execute `make clean` to remove all
-intermediate objects and libraries.
+intermediate objects and libraries and `make all` to recompile
+them.
 
 The remaining top-level configuration variables are:
 
@@ -192,7 +202,8 @@ The remaining top-level configuration variables are:
 
 - `SILENT`  
   Echo-suppressing at-sign.  Set to an empty string to echo the
-  most important compiler and linker commands.  For example:
+  most important compiler and linker commands during their
+  execution.  For example:
 
     ```
         make SILENT= all
@@ -204,10 +215,12 @@ Setting the menu-level configuration variables to some value
 corresponds to choosing a Teensyduino-related menu entry in the
 Arduino IDE:
 
-- `T_USB`: USB type
-- `T_SPEED`: CPU speed
-- `T_OPT`: Optimization level
-- `T_KEYS`: Keyboard layout
+| Variable  | Menu Entry         |
+|:----------|:-------------------|
+| `T_USB`   | USB type           |
+| `T_SPEED` | CPU speed          |
+| `T_OPT`   | Optimization level |
+| `T_KEYS`  | Keyboard layout    |
 
 For every `T_SOMEMENU` menu-level variable described above there
 is a makefile target `list-somemenu` that you can execute to get
@@ -266,12 +279,14 @@ To dump the value of some configuration variable you can execute
     -Os -flto -fno-fat-lto-objects --specs=nano.specs
 ```
 
-If you directly modify the YAT makefile, ensure to keep the type
-("immediate" or "deferred") of the makefile variables that you
-modify unchanged.  As a rule of thumb, all variables related to
-files, directories, and paths should be defined as immediate
-variables (`:=`), while all variables related to compiler flags,
-etc. should be defined as deferred variables (`=`, `?=`).
+Regardless whether you directly modify the YAT makefile or
+whether you include it from a project-specific one, ensure to
+keep the type ("immediate" or "deferred") of the makefile
+variables that you modify or define unchanged.  As a rule of
+thumb, all variables related to files, directories, and paths
+should be defined as immediate variables (`:=`), while all
+variables related to compiler flags, etc. should be defined as
+deferred variables (`=`, `?=`).
 
 ### Targets
 
@@ -280,10 +295,10 @@ The YAT makefile provides the following top-level targets:
 - `all` (equivalent to `$(TARGET).hex`)  
   Compiles the Teensy core library, all required additional
   Arduino libraries, the sources of you project.  Links them and
-  converts them to a `hex` file.
+  converts them to a hex file.
   
 - `upload` (depending on `$(TARGET).hex`)  
-  Uploads the `hex` file to your Teensy board.
+  Uploads the hex file to your Teensy board.
 
 - `clean`  
   Removes any intermediate objects, libraries, and other results.
@@ -323,3 +338,8 @@ Later in that process I discovered that all that information on
 compiler flags, etc. is actually contained in `boards.txt` and
 restructured the makefile to extract the information directly
 from there.
+
+Still later I came across
+[fkmclane/teensy-makefile](https://github.com/fkmclane/teensy-makefile),
+which also accesses `boards.txt` to do its job, but not for all
+Teensyduino's menus.
