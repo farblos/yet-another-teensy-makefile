@@ -95,8 +95,8 @@ YAT makefile directly as needed.
     ```
 
   In addition, target `install` copies the YAT makefile to the
-  project base directory, renaming any other file `GNUmakefile`
-  there to `GNUmakefile.bak`, and configures the
+  project base directory, renaming any other file named
+  `GNUmakefile` there to `GNUmakefile.bak`, and configures the
   installation-time variables in it.
 
 - (If you have specified `NO_TEENSY_TOOLS=1` above:)  
@@ -166,9 +166,9 @@ these, you really must configure only one variable:
         [foo]$ make list-teensy | head -5
         Valid values for variables TEENSY:
         Teensy 4.0:
-          TEENSY =		teensy40
+            TEENSY = teensy40
         Teensy 3.6:
-          TEENSY =		teensy36
+            TEENSY = teensy36
     ```
 
 From this variable, all following configuration variables are
@@ -184,7 +184,7 @@ them.
 The remaining top-level configuration variables are:
 
 - `LIBRARIES`  
-  List of additional Teensyduino libraries to use in the project,
+  List of additional Teensyduino libraries to use in a project,
   like `LiquidCrystal` or `Wire`.  For example:
 
     ```make
@@ -222,17 +222,17 @@ Arduino IDE:
 | `T_OPT`   | Optimization level |
 | `T_KEYS`  | Keyboard layout    |
 
-For every `T_SOMEMENU` menu-level variable described above there
-is a makefile target `list-somemenu` that you can execute to get
-a list of possible values for that variable.  For example:
+For every `T_SOMEMENU` menu-level variable listed above there is
+a makefile target `list-somemenu` that you can execute to get a
+list of possible values for that variable.  For example:
 
 ```
     [foo]$ make list-opt | head -5
     Valid values for variable T_OPT on teensy35:
     Faster:
-      T_OPT =		o2std
+        T_OPT = o2std
     Faster with LTO:
-      T_OPT =		o2lto
+        T_OPT = o2lto
 ```
 
 The first entry from each of these lists is choosen as default
@@ -243,14 +243,15 @@ value for the corresponding menu-level configuration variable.
 The low-level configuration variables are initialized by the YAT
 makefile depending on the selected board and menu entries.  Each
 of these could be overridden separately, resulting in a rather
-fine-grained control over the build process.  See the VAT
-makefile itself for a list of these.
+fine-grained control over the build process.  See the section
+tagged "low-level configuration variables" in the VAT makefile
+itself for a list of these.
 
 From the low-level configuration variables the usual compiler and
 linker flags are assembled: `CPPFLAGS`, `CFLAGS`, `LDFLAGS`, etc.
 Since it is a bit tedious to redefine these completely just to
 add, say, some own define or include path, there are a number of
-hook variables for the most needed (?) items to be added to the
+hook variables for the most needed (?) items to be added to these
 flags:
 
 - `DEFINES`, `INCLUDES`  
@@ -273,7 +274,7 @@ To dump the value of some configuration variable you can execute
 ```
     [foo]$ make list-opt | tail -2
     Smallest Code with LTO:
-      T_OPT =   oslto
+        T_OPT = oslto
 
     [foo]$ make T_OPT=oslto echo.T_OPTIMIZE
     -Os -flto -fno-fat-lto-objects --specs=nano.specs
@@ -294,8 +295,8 @@ The YAT makefile provides the following top-level targets:
 
 - `all` (equivalent to `$(TARGET).hex`)  
   Compiles the Teensy core library, all required additional
-  Arduino libraries, the sources of you project.  Links them and
-  converts them to a hex file.
+  Teensyduino libraries, the sources of your project.  Links them
+  and converts them to a hex file.
   
 - `upload` (depending on `$(TARGET).hex`)  
   Uploads the hex file to your Teensy board.
@@ -304,10 +305,10 @@ The YAT makefile provides the following top-level targets:
   Removes any intermediate objects, libraries, and other results.
 
 - `list-teensy`  
-  List the IDs of the supported Teensy boards.
+  Lists the IDs of the supported Teensy boards.
 
 - `list-usb`, `list-speed`, `list-opt`, `list-keys`  
-  List the IDs of the supported menu entries for your Teeny
+  Lists the IDs of the supported menu entries for your Teensy
   board.  See also section
   [Menu-Level Configuration Variables](#menu-level-configuration-variables).
 
