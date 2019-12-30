@@ -108,8 +108,9 @@ T_KEYLAYOUT ?=	$(call xkv,build.keylayout)
 # compiler flags and options.
 #
 
-CPPFLAGS ?=	-D$(T_USBTYPE) -DF_CPU=$(T_FCPU) -DLAYOUT_$(T_KEYLAYOUT) $(T_DEFS)	\
-		-DARDUINO=$(ARDUINO_VERSION) $(DEFINES)					\
+CPPFLAGS ?=	$(T_DEFS) -DARDUINO=$(ARDUINO_VERSION)				\
+		-DF_CPU=$(T_FCPU) -D$(T_USBTYPE) -DLAYOUT_$(T_KEYLAYOUT)	\
+		$(DEFINES)							\
 		$(INCLUDES) -I. -I$(TCORE_DIR) $(addprefix -I, $(TLIB_PATH))
 
 CFLAGS ?=	$(T_OPTIMIZE) $(T_COMMON) $(T_DEP) $(T_C) $(T_CPU)
@@ -203,15 +204,15 @@ TLC_FILES :=	$(foreach tldir, $(TLIB_PATH), $(wildcard $(tldir)/*.c))
 TLCPP_FILES :=	$(foreach tldir, $(TLIB_PATH), $(wildcard $(tldir)/*.cpp))
 
 # local source files
+INO_FILES :=	$(wildcard *.ino)
 C_FILES :=	$(wildcard *.c)
 CPP_FILES :=	$(wildcard *.cpp)
-INO_FILES :=	$(wildcard *.ino)
 
-OBJ_FILES :=	$(patsubst $(TEENSY_BASE_DIR)/%.c, $(BUILD_DIR)/%.o, $(TLC_FILES))		\
-		$(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(TLCPP_FILES))		\
+OBJ_FILES :=	$(patsubst %.ino, $(BUILD_DIR)/%.o, $(INO_FILES))				\
 		$(patsubst %.c, $(BUILD_DIR)/%.o, $(C_FILES))					\
 		$(patsubst %.cpp, $(BUILD_DIR)/%.o, $(CPP_FILES))				\
-		$(patsubst %.ino, $(BUILD_DIR)/%.o, $(INO_FILES))
+		$(patsubst $(TEENSY_BASE_DIR)/%.c, $(BUILD_DIR)/%.o, $(TLC_FILES))		\
+		$(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(TLCPP_FILES))
 
 .PHONY:		all
 all:		$(TARGET).hex
@@ -231,6 +232,11 @@ $(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.cpp
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
 
+$(BUILD_DIR)/%.o: %.ino
+		@echo -e "[CXX]\t$<"
+		@mkdir -p "$(dir $@)"
+		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -include Arduino.h -x c++ -o $@ -c $<
+
 $(BUILD_DIR)/%.o: %.c
 		@echo -e "[CC]\t$<"
 		@mkdir -p "$(dir $@)"
@@ -240,11 +246,6 @@ $(BUILD_DIR)/%.o: %.cpp
 		@echo -e "[CXX]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
-
-$(BUILD_DIR)/%.o: %.ino
-		@echo -e "[INO]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -include Arduino.h -x c++ -o $@ -c $<
 
 $(BUILD_DIR)/core.a: $(TCOBJ_FILES)
 		@echo -e "[AR]\t$< ..."
@@ -257,7 +258,7 @@ $(TARGET).elf:	$(BUILD_DIR)/core.a $(OBJ_FILES)
 		$(SILENT)$(CC) $(LDFLAGS) -o $@ $(OBJ_FILES) $(BUILD_DIR)/core.a $(T_LIBS) $(LDLIBS)
 
 $(TARGET).hex:	$(TARGET).elf
-		@echo -e "[HEX]\t$@"
+		@echo -e "[OC]\t$@"
 		@$(SIZE) $<
 		@$(SIZE) $< |						\
 		awk '/^ *[0-9]+[\t ]+[0-9]+[\t ]+[0-9]+/		\
@@ -268,8 +269,8 @@ $(TARGET).hex:	$(TARGET).elf
 		       mds = "$(call xtv,upload.maximum_data_size)";	\
 		       if ( mds !~ /^[0-9]+$$/ ) mds = 0;		\
 		       if ( mts > 0 && mds > 0 )			\
-		         printf( "Used program storage: %.2f%%, "	\
-				 "dynamic memory: %.2f%%\n",		\
+		         printf( "Used program storage: %.1f%%, "	\
+				 "dynamic memory: %.1f%%\n",		\
 		                 (ts+ds)/mts*100.0,			\
 		                 (ds+bs)/mds*100.0 );			\
 		     }'
