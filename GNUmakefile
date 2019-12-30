@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 # See https://github.com/farblos/yet-another-teensy-makefile/README.md
-# for documentation on variable and targets.
+# for documentation on variables and targets.
 #
 
 # force the use of Bash on Debian systems
@@ -26,7 +26,7 @@ SHELL :=	/bin/bash
 #
 # installation-time variables.
 #
-# These are instantiated by target "install".
+# These are normally instantiated by target "install".
 #
 
 TEENSY_BASE_DIR :=	### Teensy base directory
@@ -44,7 +44,7 @@ TEENSYDUINO_VERSION :=	### Teensyduino version (sans periods)
 #
 
 # configuration variable TEENSY is so top-level that it is not
-# even mentioned here.  See README.md for more information.
+# even defined here.  See README.md for more information.
 
 ifeq ($(origin LIBRARIES), undefined)
 LIBRARIES :=
@@ -78,10 +78,11 @@ T_KEYS ?=	$($(TEENSY).menu.keys.default)
 # low-level configuration variables.
 #
 
-# controlled by TEENSY
+# governed by TEENSY.  The global optimization flags in T_GLBLOPT
+# are not used since T_OPTIMIZE is more specific.
 T_COMMON ?=	$(call xtv,build.flags.common)
 T_DEP ?=	$(call xtv,build.flags.dep)
-T_GOPT ?=	$(call xtv,build.flags.optimize)
+T_GLBLOPT ?=	$(call xtv,build.flags.optimize)
 T_CPU ?=	$(call xtv,build.flags.cpu)
 T_DEFS ?=	$(call xtv,build.flags.defs)
 T_C ?=		$(call xtv,build.flags.c)
@@ -90,17 +91,17 @@ T_S ?=		$(call xtv,build.flags.S)
 T_LD ?=		$(call xtv,build.flags.ld)
 T_LIBS ?=	$(call xtv,build.flags.libs)
 
-# controlled by T_USB
+# governed by T_USB
 T_USBTYPE ?=	$(call xuv,build.usbtype)
 
-# controlled by T_SPEED
+# governed by T_SPEED
 T_FCPU ?=	$(call xsv,build.fcpu)
 
-# controlled by T_OPT
+# governed by T_OPT
 T_OPTIMIZE ?=	$(call xov,build.flags.optimize)
 T_LDSPECS ?=	$(call xov,build.flags.ldspecs)
 
-# controlled by T_KEYS
+# governed by T_KEYS
 T_KEYLAYOUT ?=	$(call xkv,build.keylayout)
 
 #
@@ -109,7 +110,7 @@ T_KEYLAYOUT ?=	$(call xkv,build.keylayout)
 
 CPPFLAGS ?=	-D$(T_USBTYPE) -DF_CPU=$(T_FCPU) -DLAYOUT_$(T_KEYLAYOUT) $(T_DEFS)	\
 		-DARDUINO=$(ARDUINO_VERSION) $(DEFINES)					\
-		-I. -I$(TCORE_DIR) $(addprefix -I, $(TLIB_PATH)) $(INCLUDES)
+		$(INCLUDES) -I. -I$(TCORE_DIR) $(addprefix -I, $(TLIB_PATH))
 
 CFLAGS ?=	$(T_OPTIMIZE) $(T_COMMON) $(T_DEP) $(T_C) $(T_CPU)
 
@@ -126,26 +127,26 @@ LDFLAGS ?=	$(T_OPTIMIZE) $(T_LD) $(T_CPU) $(T_LDSPECS)
 # conditional assignment with "?=" is not sufficient for these.
 #
 
-# compiler executable directory.  Ends in slash if non-empty.
-TCEXE_DIR =	$(if $(NO_TEENSY_TOOLS),,$(TOOLS_DIR)/$(call xtv,build.toolchain))
+# Teensy gcc directory.  Must end in a slash if non-empty.
+T_GCC_DIR =	$(if $(NO_TEENSY_TOOLS),,$(TOOLS_DIR)/$(call xtv,build.toolchain))
 
 ifeq ($(filter-out undefined default, $(origin CC)),)
-CC =		$(TCEXE_DIR)$(call xtv,build.command.gcc)
+CC =		$(T_GCC_DIR)$(call xtv,build.command.gcc)
 endif
 
 ifeq ($(filter-out undefined default, $(origin CXX)),)
-CXX =		$(TCEXE_DIR)$(call xtv,build.command.g_plus_plus)
+CXX =		$(T_GCC_DIR)$(call xtv,build.command.g_plus_plus)
 endif
 
 ifeq ($(filter-out undefined default, $(origin AR)),)
-AR =		$(TCEXE_DIR)$(call xtv,build.command.ar)
+AR =		$(T_GCC_DIR)$(call xtv,build.command.ar)
 endif
 
-OBJCOPY ?=	$(TCEXE_DIR)$(call xtv,build.command.objcopy)
+OBJCOPY ?=	$(T_GCC_DIR)$(call xtv,build.command.objcopy)
 
-LD ?=		$(TCEXE_DIR)$(call xtv,build.command.linker)
+LD ?=		$(T_GCC_DIR)$(call xtv,build.command.linker)
 
-SIZE ?=		$(TCEXE_DIR)$(call xtv,build.command.size)
+SIZE ?=		$(T_GCC_DIR)$(call xtv,build.command.size)
 
 #
 # verify configuration variable TEENSY and determine T_CORE.
@@ -157,14 +158,14 @@ ifeq ($(filter-out install list-teensy,$(MAKECMDGOALS)),)
   # no-op
 else ifeq ($(origin TEENSY), undefined)
   $(error Undefined configuration variable TEENSY)
-else ifeq ($(shell test -f '$(BOARDS_TXT)' && echo found),)
+else ifeq ($(shell test -f "$(BOARDS_TXT)" && echo found),)
   $(error Inaccessible boards.txt file "$(BOARDS_TXT)")
-else ifeq ($(shell grep '^$(TEENSY)\.name=' '$(BOARDS_TXT)' 2>/dev/null),)
+else ifeq ($(shell grep '^$(TEENSY)\.name=' "$(BOARDS_TXT)" 2>/dev/null),)
   $(error Invalid configuration variable TEENSY ("$(TEENSY)" not found in boards.txt))
 else
   # use function "shell" only this one time and the user-defined
   # boards.txt accessor functions for all other instances
-  T_CORE :=	$(shell sed -n 's/^$(TEENSY)\.build\.core=\(.*\)$$/\1/p' '$(BOARDS_TXT)')
+  T_CORE :=	$(shell sed -n 's/^$(TEENSY)\.build\.core=\(.*\)$$/\1/p' "$(BOARDS_TXT)")
 endif
 
 #
@@ -184,7 +185,7 @@ TLIB_PATH :=	$(addprefix $(TLIB_DIR)/, $(LIBRARIES))
 TOOLS_DIR :=	$(TEENSY_BASE_DIR)/hardware/tools
 
 #
-# main variables and targets.
+# build variables and targets.
 #
 
 # source files of the Teensy core library
@@ -247,8 +248,8 @@ $(BUILD_DIR)/%.o: %.ino
 
 $(BUILD_DIR)/core.a: $(TCOBJ_FILES)
 		@echo -e "[AR]\t$< ..."
-		@for tcobj in $^; do		\
-		  $(AR) rcs $@ "$$tcobj";	\
+		@for tcobjfile in $^; do	\
+		  $(AR) rcs $@ "$$tcobjfile";	\
 		done
 
 $(TARGET).elf:	$(BUILD_DIR)/core.a $(OBJ_FILES)
@@ -259,8 +260,8 @@ $(TARGET).hex:	$(TARGET).elf
 		@echo -e "[HEX]\t$@"
 		@$(SIZE) $<
 		@$(SIZE) $< |						\
-		awk '/^ *[0-9]+[ \t]+[0-9]+[ \t]+[0-9]+/		\
-		       { ts = $$1; ds = $$2; bs= $$3; }			\
+		awk '/^ *[0-9]+[\t ]+[0-9]+[\t ]+[0-9]+/		\
+		       { ts = $$1; ds = $$2; bs = $$3; }		\
 		     END {						\
 		       mts = "$(call xtv,upload.maximum_size)";		\
 		       if ( mts !~ /^[0-9]+$$/ ) mts = 0;		\
@@ -280,7 +281,7 @@ ifeq ($(NO_TEENSY_TOOLS),)
 		$(TOOLS_DIR)/teensy_post_compile -file=$(TARGET) -path=$(CURDIR) -tools=$(TOOLS_DIR)
 		$(TOOLS_DIR)/teensy_reboot
 else
-		$(TOOLS_DIR)/teensy_loader_cli --mcu "$(call xtv,build.mcu)" -w -v $<
+		$(TOOLS_DIR)/teensy_loader_cli --mcu "$(call xtv,build.mcu)" -v -w $<
 endif
 
 clean::
@@ -290,20 +291,21 @@ clean::
 
 # include dependency files
 ifneq ($(MAKECMDGOALS),install)
--include $(OBJ_FILES:.o=.d)
+-include $(TCOBJ_FILES:.o=.d) $(OBJ_FILES:.o=.d)
 endif
 
 #
 # auxilliary variables and targets.
 #
 
-# seconds since the epoch, required to set RTC on upload
+# seconds since the epoch.  Required to define the RTC symbol in
+# T_LD.
 TIME_LOCAL =	$(shell date +'%s')
 
 # dump the value of a variable
 .PHONY:		echo.%
 echo.%:
-		@echo $($*)
+		@echo '$($*)'
 
 #
 # boards.txt functions and targets.
@@ -357,27 +359,27 @@ realclean::	clean
 .PHONY:		list-teensy
 list-teensy:
 		@echo "Valid values for variables TEENSY:"
-		@sed -n -e 's/^\([^.]*\)\.name=\(.*\)$$/\2:\n  TEENSY =\t\t\1/p' "$(BOARDS_TXT)"
+		@sed -n -e 's/^\([^.]*\)\.name=\(.*\)$$/\2:\n    TEENSY = \1/p' "$(BOARDS_TXT)"
 
 .PHONY:		list-usb
 list-usb:
 		@echo "Valid values for variable T_USB on $(TEENSY):"
-		@sed -n 's/^$(TEENSY)\.menu\.usb\.\([^.]*\)=\(.*\)$$/\2:\n  T_USB =\t\t\1/p' "$(BOARDS_TXT)"
+		@sed -n 's/^$(TEENSY)\.menu\.usb\.\([^.]*\)=\(.*\)$$/\2:\n    T_USB = \1/p' "$(BOARDS_TXT)"
 
 .PHONY:		list-speed
 list-speed:
 		@echo "Valid values for variable T_SPEED on $(TEENSY):"
-		@sed -n 's/^$(TEENSY)\.menu\.speed\.\([^.]*\)=\(.*\)$$/\2:\n  T_SPEED =\t\t\1/p' "$(BOARDS_TXT)"
+		@sed -n 's/^$(TEENSY)\.menu\.speed\.\([^.]*\)=\(.*\)$$/\2:\n    T_SPEED = \1/p' "$(BOARDS_TXT)"
 
 .PHONY:		list-opt
 list-opt:
 		@echo "Valid values for variable T_OPT on $(TEENSY):"
-		@sed -n 's/^$(TEENSY)\.menu\.opt\.\([^.]*\)=\(.*\)$$/\2:\n  T_OPT =\t\t\1/p' "$(BOARDS_TXT)"
+		@sed -n 's/^$(TEENSY)\.menu\.opt\.\([^.]*\)=\(.*\)$$/\2:\n    T_OPT = \1/p' "$(BOARDS_TXT)"
 
 .PHONY:		list-keys
 list-keys:
 		@echo "Valid values for variable T_KEYS on $(TEENSY):"
-		@sed -n 's/^$(TEENSY)\.menu\.keys\.\([^.]*\)=\(.*\)$$/\2:\n  T_KEYS =\t\t\1/p' "$(BOARDS_TXT)"
+		@sed -n 's/^$(TEENSY)\.menu\.keys\.\([^.]*\)=\(.*\)$$/\2:\n    T_KEYS = \1/p' "$(BOARDS_TXT)"
 
 #
 # installation target.
