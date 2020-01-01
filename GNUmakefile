@@ -26,7 +26,8 @@ SHELL :=	/bin/bash
 #
 # installation-time variables.
 #
-# These are normally instantiated by target "install".
+# These are normally instantiated by target "install".  Ensure to
+# remove all trailing comments when you configure these manually.
 #
 
 TEENSY_BASE_DIR :=	### Teensy base directory
@@ -42,25 +43,43 @@ TEENSYDUINO_VERSION :=	### Teensyduino version (sans periods)
 #
 # top-level configuration variables.
 #
-
-# configuration variable TEENSY is so top-level that it is not
+# Configuration variable TEENSY is so top-level that it is not
 # even defined here.  See README.md for more information.
+#
 
 ifeq ($(origin LIBRARIES), undefined)
 LIBRARIES :=
 endif
 
-ifeq ($(origin TARGET), undefined)
-TARGET :=	$(notdir $(CURDIR))
+ifeq ($(origin DEF_TARGET), undefined)
+DEF_TARGET :=	build
 endif
 
-ifeq ($(origin BUILD_DIR), undefined)
-BUILD_DIR :=	build
+ifeq ($(origin DEP_MODEL), undefined)
+DEP_MODEL :=	makefiles
 endif
 
 ifeq ($(origin SILENT), undefined)
 SILENT :=	@
 endif
+
+# base name of the generated ELF object and hex file
+ifeq ($(origin TARGET), undefined)
+TARGET :=	$(notdir $(CURDIR))
+endif
+
+# build directory for intermediate objects and libraries, best
+# specified relatively to the current working directory.  Target
+# clean completely removes this directory.
+ifeq ($(origin BUILD_DIR), undefined)
+BUILD_DIR :=	build
+endif
+
+# variables influencing build results, required for dependency
+# model "variables" only.  Any changes in the values of the
+# variables listed here trigger a complete rebuild of all objects
+# and libraries.  Must be defined as deferred variable.
+VAR_DEPS ?=	$(TEENSY) $(T_USB) $(T_SPEED) $(T_OPT) $(T_KEYS)
 
 #
 # menu-level configuration variables.
@@ -150,12 +169,48 @@ LD ?=		$(T_GCC_DIR)$(call xtv,build.command.linker)
 SIZE ?=		$(T_GCC_DIR)$(call xtv,build.command.size)
 
 #
-# verify configuration variable TEENSY and determine T_CORE.
+# auxilliary stuff.
 #
 
 BOARDS_TXT :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/boards.txt
 
-ifeq ($(filter-out install list-teensy,$(MAKECMDGOALS)),)
+# seconds since the epoch.  Required to define the RTC symbol in
+# T_LD.
+TIME_LOCAL =	$(shell date +'%s')
+
+# non-clean-or-install target predicate.  This variable is
+# non-empty if the current make goal as specified on the
+# commandline is different from clean, realclean, or install (or
+# combinations thereof).  More clearly:
+#
+#   ifeq  ($(NCITP),)  <=>  "if   clean-or-install-target-p"
+#   ifneq ($(NCITP),)  <=>  "if ! clean-or-install-target-p"
+NCITP :=	$(strip						\
+		  $(if $(MAKECMDGOALS),				\
+		       $(filter-out clean realclean install,	\
+		                    $(MAKECMDGOALS)),		\
+		       all))
+
+# default target
+.PHONY:		all
+all:		$(DEF_TARGET)
+
+# force target
+.PHONY:		force
+force:
+
+# dump the value of a variable
+.PHONY:		echo.%
+echo.%:
+		@echo '$($*)'
+
+#
+# verify configuration variable TEENSY and determine T_CORE.
+#
+
+ifeq ($(NCITP),)
+  # no-op
+else ifeq ($(MAKECMDGOALS), list-teensy)
   # no-op
 else ifeq ($(origin TEENSY), undefined)
   $(error Undefined configuration variable TEENSY)
@@ -167,6 +222,55 @@ else
   # use function "shell" only this one time and the user-defined
   # boards.txt accessor functions for all other instances
   T_CORE :=	$(shell sed -n 's/^$(TEENSY)\.build\.core=\(.*\)$$/\1/p' "$(BOARDS_TXT)")
+endif
+
+#
+# dependency handling.
+#
+# The only tricky dependency model here is "variables" since this
+# makefile heavily relies on deferred variables.  With these the
+# makefile can decide only in a recipe whether variable values
+# have changed such that a rebuild is required.
+#
+# But the only (?) way to influence dependencies from a recipe is
+# to relate the recipe to an included makefile, since GNU make
+# restarts its dependency tracking only when an included makefile
+# changes.  Therefore we do not only need file "vardeps" to track
+# the variable values, but also that dummy makefile "vardeps.mk".
+#
+
+# duplicate the instructions from the dummy makefile recipe here.
+# During a "make clean all", for example, both files get rebuilt
+# through this target, and not through the dummy makefile target.
+$(BUILD_DIR)/vardeps:
+		@mkdir -p "$(BUILD_DIR)"
+		@echo '$(VAR_DEPS)' | md5sum 1>$(BUILD_DIR)/vardeps
+		@touch "$(BUILD_DIR)/vardeps.mk"
+
+ifneq ($(NCITP),)
+-include $(BUILD_DIR)/vardeps.mk
+endif
+
+.PHONY:		$(BUILD_DIR)/vardeps.mk
+$(BUILD_DIR)/vardeps.mk:
+		@set -e; set -o pipefail;					\
+		vdsumnom=$$( echo '$(VAR_DEPS)' | md5sum );			\
+		vdsumact=$$( cat $(BUILD_DIR)/vardeps 2>/dev/null || : );	\
+		if test "$$vdsumact" != "$$vdsumnom"; then			\
+		  mkdir -p "$(BUILD_DIR)";					\
+		  echo "$$vdsumnom" 1>$(BUILD_DIR)/vardeps;			\
+		  touch "$(BUILD_DIR)/vardeps.mk";				\
+		fi
+
+# define dependency hook depending on selected dependency model
+ifeq ($(DEP_MODEL),makefiles)
+  DPH :=	$(filter-out $(BUILD_DIR)/%, $(MAKEFILE_LIST))
+else ifeq ($(DEP_MODEL),variables)
+  DPH :=	$(BUILD_DIR)/vardeps
+else ifeq ($(DEP_MODEL),always)
+  DPH :=	force
+else
+  DPH :=
 endif
 
 #
@@ -214,35 +318,32 @@ OBJ_FILES :=	$(patsubst %.ino, $(BUILD_DIR)/%.o, $(INO_FILES))				\
 		$(patsubst $(TEENSY_BASE_DIR)/%.c, $(BUILD_DIR)/%.o, $(TLC_FILES))		\
 		$(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(TLCPP_FILES))
 
-.PHONY:		all
-all:		$(TARGET).hex
-
-$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.S
+$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.S $(DPH)
 		@echo -e "[AS]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CC) $(CPPFLAGS) $(ASFLAGS) -o $@ -c $<
 
-$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.c
+$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.c $(DPH)
 		@echo -e "[CC]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
 
-$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.cpp
+$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.cpp $(DPH)
 		@echo -e "[CXX]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
 
-$(BUILD_DIR)/%.o: %.ino
+$(BUILD_DIR)/%.o: %.ino $(DPH)
 		@echo -e "[CXX]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -include Arduino.h -x c++ -o $@ -c $<
 
-$(BUILD_DIR)/%.o: %.c
+$(BUILD_DIR)/%.o: %.c $(DPH)
 		@echo -e "[CC]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
 
-$(BUILD_DIR)/%.o: %.cpp
+$(BUILD_DIR)/%.o: %.cpp $(DPH)
 		@echo -e "[CXX]\t$<"
 		@mkdir -p "$(dir $@)"
 		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
@@ -253,7 +354,7 @@ $(BUILD_DIR)/core.a: $(TCOBJ_FILES)
 		  $(AR) rcs $@ "$$tcobjfile" || exit $$?;	\
 		done
 
-$(TARGET).elf:	$(BUILD_DIR)/core.a $(OBJ_FILES)
+$(TARGET).elf:	$(OBJ_FILES) $(BUILD_DIR)/core.a
 		@echo -e "[LD]\t$@"
 		$(SILENT)$(CC) $(LDFLAGS) -o $@ $(OBJ_FILES) $(BUILD_DIR)/core.a $(T_LIBS) $(LDLIBS)
 
@@ -276,6 +377,9 @@ $(TARGET).hex:	$(TARGET).elf
 		     }'
 		$(SILENT)$(OBJCOPY) -O ihex -R .eeprom $< $@
 
+.PHONY:		build
+build:		$(TARGET).hex
+
 .PHONY:		upload
 upload:		$(TARGET).hex
 ifeq ($(NO_TEENSY_TOOLS),)
@@ -291,22 +395,9 @@ clean::
 		rm -f $(TARGET).hex
 
 # include dependency files
-ifneq ($(MAKECMDGOALS),install)
+ifneq ($(NCITP),)
 -include $(TCOBJ_FILES:.o=.d) $(OBJ_FILES:.o=.d)
 endif
-
-#
-# auxilliary variables and targets.
-#
-
-# seconds since the epoch.  Required to define the RTC symbol in
-# T_LD.
-TIME_LOCAL =	$(shell date +'%s')
-
-# dump the value of a variable
-.PHONY:		echo.%
-echo.%:
-		@echo '$($*)'
 
 #
 # boards.txt functions and targets.
@@ -319,7 +410,7 @@ xsv =		$($(TEENSY).menu.speed.$(T_SPEED).$(1))
 xov =		$($(TEENSY).menu.opt.$(T_OPT).$(1))
 xkv =		$($(TEENSY).menu.keys.$(T_KEYS).$(1))
 
-ifneq ($(MAKECMDGOALS),install)
+ifneq ($(NCITP),)
 -include $(PROJECT_BASE_DIR)/boards.mk
 endif
 

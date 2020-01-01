@@ -12,6 +12,9 @@ Unique selling points and other facts:
 - Keeps all that information overridable at different levels of
   granularity
 
+- Handles the assembler files that come in recent Teensy core
+  libraries
+
 - Comes with instructions and procedures to set up a minimum
   Teensy development environment from a full Arduino and
   Teensyduino installation
@@ -171,15 +174,13 @@ these, you really must configure only one variable:
             TEENSY = teensy36
     ```
 
-From this variable, all following configuration variables are
-configured to reasonable default values (at least as reasonable
-as determined by Teensyduino's `board.txt`).  You can override
-these default values freely and at all levels.  Remember, though,
-that the compilation of the Teensy core libraries depends on your
-board **and** on the menu-level configuration variables.  If you
-change these, you must execute `make clean` to remove all
-intermediate objects and libraries and `make all` to recompile
-them.
+From this variable, all following configuration variables related
+to Teensy are configured to reasonable default values (at least
+as reasonable as determined by Teensyduino's `board.txt`).  You
+can override these default values freely and at all levels, but
+you should not forget that it may be required to rebuild the
+Teensy core and your project when changing variable values.  See
+also configuration variable `DEP_MODEL`.
 
 The remaining top-level configuration variables are:
 
@@ -191,14 +192,39 @@ The remaining top-level configuration variables are:
         LIBRARIES = LiquidCrystal Wire
     ```
 
-- `TARGET`  
-  The base name of the generated ELF object and hex file.
-  Defaults to the base name of the current working directory.
+- `DEF_TARGET`  
+  The default target triggered by a plain `make` or a `make all`.
+  Reasonable values are `build` (the default) and `upload`.
 
-- `BUILD_DIR`  
-  Build directory for intermediate objects and libraries.  Can be
-  specified relatively to the current working directory.
-  Defaults to value `build`.
+- `DEP_MODEL`  
+  The dependency model used by the YAT makefile.
+  
+  As mentioned above, the choice of your Teensy board and the
+  values of the menu-level configuration variables described
+  below influence the compiled result.  You can configure this
+  variable to let the YAT makefile detect changes in your choice
+  and recompile sources as required:
+  
+  Dependency model `makefiles` triggers a complete rebuild if any
+  of the makefiles of the project changes.  This is the default.
+  This model is suitable if you completely maintain your project
+  configuration in the YAT makefile or some project-specific
+  makefile.  Whenever you update any of these to change, say, the
+  USB type, all sources will be recompiled.
+
+  Dependency model `variables` triggers a complete rebuild if the
+  value of any of the variables listed in configuration variable
+  `VAR_DEPS` changes.  (Which, by default, encompasses variable
+  `TEENSY` and all menu-level configuration variables.)  This
+  model is suitable if you frequently change configuration
+  variables, probably even on command line level.
+
+  Dependency model `always` always forces a complete rebuild.
+  
+  Dependency model `traditional` does not introduce any
+  additional artificial dependencies and, hence, lets the YAT
+  makefile rely on the usual object-source-header dependencies
+  only.
 
 - `SILENT`  
   Echo-suppressing at-sign.  Set to an empty string to echo the
@@ -208,6 +234,11 @@ The remaining top-level configuration variables are:
     ```
         make SILENT= all
     ```
+
+There are more top-level configuration variables, but they are
+less significant.  See the section tagged "top-level
+configuration variables" in the YAT makefile itself for a list of
+these.
 
 #### Menu-Level Configuration Variables
 
@@ -244,7 +275,7 @@ The low-level configuration variables are initialized by the YAT
 makefile depending on the selected board and menu entries.  Each
 of these could be overridden separately, resulting in a rather
 fine-grained control over the build process.  See the section
-tagged "low-level configuration variables" in the VAT makefile
+tagged "low-level configuration variables" in the YAT makefile
 itself for a list of these.
 
 From the low-level configuration variables the usual compiler and
@@ -291,9 +322,14 @@ deferred variables (`=`, `?=`).
 
 ### Targets
 
+The default (first) target in the YAT makefile is target `all`,
+which by default is equivalent to target `build` described below.
+You can change that default by configuring variable `DEF_TARGET`,
+for example, to value `upload`.
+
 The YAT makefile provides the following top-level targets:
 
-- `all` (equivalent to `$(TARGET).hex`)  
+- `build` (equivalent to `$(TARGET).hex`)  
   Compiles the Teensy core library, all required additional
   Teensyduino libraries, the sources of your project.  Links them
   and converts them to a hex file.
