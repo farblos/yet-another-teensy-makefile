@@ -15,6 +15,10 @@ Unique selling points and other facts:
 - Handles the assembler files that come in recent Teensy core
   libraries
 
+- Natively supports upload with `tycmd` from
+  [Koromix/tytools](https://github.com/Koromix/tytools) (no big
+  deal, but looks nice in this list, anyway)
+
 - Comes with instructions and procedures to set up a minimum
   Teensy development environment from a full Arduino and
   Teensyduino installation
@@ -92,9 +96,9 @@ YAT makefile directly as needed.
     ```
         examples/Teensy
         hardware/teensy/avr
-        hardware/tools/arm          # disable with NO_TEENSY_TOOLS=1
-        hardware/tools/avr          # disable with NO_TEENSY_TOOLS=1
-        hardware/tools/teensy*      # disable with NO_TEENSY_TOOLS=1
+        hardware/tools/teensy*
+        hardware/tools/arm          # disable with NO_TEENSY_GCC=arm or ...=all
+        hardware/tools/avr          # disable with NO_TEENSY_GCC=avr or ...=all
     ```
 
   In addition, target `install` copies the YAT makefile to the
@@ -102,17 +106,16 @@ YAT makefile directly as needed.
   `GNUmakefile` there to `GNUmakefile.bak`, and configures the
   installation-time variables in it.
 
-- (If you have specified `NO_TEENSY_TOOLS=1` above:)  
+- (If you have specified `NO_TEENSY_GCC=arm` or `...=all` above
+  and want to compile for a Teensy 3.x or 4.x board):  
   Install Debian packages `gcc-arm-none-eabi`,
-  `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib`
-  (for Teensy 3.x and 4.x boards) or Debian packages `gcc-avr`,
-  `avr-libc` (for Teensy 2.x).  Other distros may provide similar
-  packages.
-
-- (If you have specified `NO_TEENSY_TOOLS=1` above:)  
-  Build `teensy_loader_cli` from
-  [PaulStoffregen/teensy_loader_cli](https://github.com/PaulStoffregen/teensy_loader_cli)
-  and copy it to `<teensy-base-dir>/hardware/tools`.
+  `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib`.
+  Other distros may provide similar packages.
+  
+- (If you have specified `NO_TEENSY_GCC=avr` or `...=all` above
+  and want to compile for a Teensy 2.x board):  
+  Install Debian packages `gcc-avr`, `avr-libc`.  Other distros
+  may provide similar packages.
 
 - After executing above steps, the Arduino base directory is no
   longer required for using the YAT makefile and can be removed.
@@ -192,6 +195,16 @@ The remaining top-level configuration variables are:
         LIBRARIES = LiquidCrystal Wire
     ```
 
+- `UPLOAD_TOOL`  
+  The tool used to upload the hex file to your Teensy board.  One
+  of `tycmd`, `tlcli` (for `teensy_loader_cli` from
+  [PaulStoffregen/teensy_loader_cli](https://github.com/PaulStoffregen/teensy_loader_cli)),
+  or `tlgui` (the vanilly Teensy loader).  To use one of the
+  former two you must have the respective tool available in your
+  execution path.  The default for this variable is based on what
+  is found in the execution path during execution of `make
+  install`.
+
 - `DEF_TARGET`  
   The default target triggered by a plain `make` or a `make all`.
   Reasonable values are `build` (the default) and `upload`.
@@ -205,9 +218,9 @@ The remaining top-level configuration variables are:
   variable to let the YAT makefile detect changes in your choice
   and recompile sources as required:
   
-  Dependency model `makefiles` triggers a complete rebuild if any
-  of the makefiles of the project changes.  This is the default.
-  This model is suitable if you completely maintain your project
+  Dependency model `makefiles` (the default) triggers a complete
+  rebuild if any of the makefiles of the project changes.  This
+  model is suitable if you completely maintain your project
   configuration in the YAT makefile or some project-specific
   makefile.  Whenever you update any of these to change, say, the
   USB type of your project, all sources will be recompiled.
@@ -296,7 +309,7 @@ flags:
 Finally, there is as set of configuration variables for compiler
 and other executables, such as `CC`, `CXX`, `LD`, etc.  These get
 default values based on your board and whether you have specified
-`NO_TEENSY_TOOLS` during installation.
+`NO_TEENSY_GCC` during installation.
 
 #### General Notes on Configuration Variables
 

@@ -34,7 +34,9 @@ TEENSY_BASE_DIR :=	### Teensy base directory
 
 PROJECT_BASE_DIR :=	### Project base directory
 
-NO_TEENSY_TOOLS :=	### No-Teensy-tools flag (non-empty for true)
+NO_TEENSY_GCC :=	### No-Teensy-gcc (empty, "avr", "arm", "all")
+
+UPLOAD_TOOL_DEFAULT :=	### Upload tool default ("tycmd", "tlcli", "tlgui")
 
 ARDUINO_VERSION :=	### Ardunio version (sans periods)
 
@@ -49,6 +51,10 @@ TEENSYDUINO_VERSION :=	### Teensyduino version (sans periods)
 
 ifeq ($(origin LIBRARIES), undefined)
 LIBRARIES :=
+endif
+
+ifeq ($(origin UPLOAD_TOOL), undefined)
+UPLOAD_TOOL :=	$(UPLOAD_TOOL_DEFAULT)
 endif
 
 ifeq ($(origin DEF_TARGET), undefined)
@@ -148,7 +154,15 @@ LDFLAGS ?=	$(T_OPTIMIZE) $(T_LD) $(T_CPU) $(T_LDSPECS)
 #
 
 # Teensy gcc directory.  Must end in a slash if non-empty.
-T_GCC_DIR =	$(if $(NO_TEENSY_TOOLS),,$(TOOLS_DIR)/$(call xtv,build.toolchain))
+ifeq ($(NO_TEENSY_GCC),)
+  T_GCC_DIR =	$(TOOLS_DIR)/$(call xtv,build.toolchain)
+else ifeq ($(NO_TEENSY_GCC), arm)
+  T_GCC_DIR =	$(filter-out %/arm/bin/, $(TOOLS_DIR)/$(call xtv,build.toolchain))
+else ifeq ($(NO_TEENSY_GCC), avr)
+  T_GCC_DIR =	$(filter-out %/avr/bin/, $(TOOLS_DIR)/$(call xtv,build.toolchain))
+else
+  T_GCC_DIR =
+endif
 
 ifeq ($(filter-out undefined default, $(origin CC)),)
 CC =		$(T_GCC_DIR)$(call xtv,build.command.gcc)
@@ -382,11 +396,13 @@ build:		$(TARGET).hex
 
 .PHONY:		upload
 upload:		$(TARGET).hex
-ifeq ($(NO_TEENSY_TOOLS),)
+ifeq ($(UPLOAD_TOOL), tycmd)
+		tycmd upload $<
+else ifeq ($(UPLOAD_TOOL), tlcli)
+		teensy_loader_cli --mcu "$(call xtv,build.mcu)" -v -w $<
+else
 		$(TOOLS_DIR)/teensy_post_compile -file=$(TARGET) -path=$(CURDIR) -tools=$(TOOLS_DIR)
 		$(TOOLS_DIR)/teensy_reboot
-else
-		$(TOOLS_DIR)/teensy_loader_cli --mcu "$(call xtv,build.mcu)" -v -w $<
 endif
 
 clean::
@@ -498,18 +514,24 @@ install:
 #		(re)create the Teensy base directory
 		rm -rf "$(TEENSY_BASE_DIR)"
 		mkdir -p "$(TEENSY_BASE_DIR)"
-		@echo 'find ... | cpio -pdm "$(TEENSY_BASE_DIR)"';		\
-		set -e; set -o pipefail;					\
-		( cd "$(ARDUINO_BASE_DIR)" &&					\
-		  find examples/Teensy						\
-		       hardware/teensy/avr -depth -print0 |			\
-                  cpio -pdm --null "$(TEENSY_BASE_DIR)" );			\
-		if test -z "$(NO_TEENSY_TOOLS)"; then				\
-		  ( cd "$(ARDUINO_BASE_DIR)" &&					\
-		    find hardware/tools/arm					\
-		         hardware/tools/avr					\
-		         hardware/tools/teensy* -depth -print0 |		\
-                    cpio -pdm --null "$(TEENSY_BASE_DIR)" );			\
+		@echo 'find ... | cpio -pdm "$(TEENSY_BASE_DIR)"';	\
+		set -e; set -o pipefail;				\
+		( cd "$(ARDUINO_BASE_DIR)" &&				\
+		  find examples/Teensy					\
+		       hardware/teensy/avr				\
+		       hardware/tools/teensy* -depth -print0 |		\
+                  cpio -pdm --null "$(TEENSY_BASE_DIR)" );		\
+		if test "$(NO_TEENSY_GCC)" != "arm" &&			\
+		   test "$(NO_TEENSY_GCC)" != "all"; then		\
+		  ( cd "$(ARDUINO_BASE_DIR)" &&				\
+		    find hardware/tools/arm -depth -print0 |		\
+                    cpio -pdm --null "$(TEENSY_BASE_DIR)" );		\
+		fi;							\
+		if test "$(NO_TEENSY_GCC)" != "avr" &&			\
+		   test "$(NO_TEENSY_GCC)" != "all"; then		\
+		  ( cd "$(ARDUINO_BASE_DIR)" &&				\
+		    find hardware/tools/avr -depth -print0 |		\
+                    cpio -pdm --null "$(TEENSY_BASE_DIR)" );		\
 		fi
 #		prepare the project base directory
 		mkdir -p "$(PROJECT_BASE_DIR)"
@@ -534,10 +556,19 @@ install:
 		else									\
 		  tvers=100;								\
 		fi;									\
+		upltldef="";								\
+		if ( tycmd ) 1>/dev/null 2>&1; then					\
+		  upltldef="tycmd";							\
+		elif ( teensy_loader_cli || : ) 2>&1 | grep -q 'www\.pjrc\.com'; then	\
+		  upltldef="tlcli";							\
+		else									\
+		  upltldef="tlgui";							\
+		fi;									\
 		cat "$(strip $(MAKEFILE_LIST))" |					\
 		sed -e 's@[#]## Teensy base directory$$@$(TEENSY_BASE_DIR)@'		\
 		    -e 's@[#]## Project base directory$$@$(PROJECT_BASE_DIR)@'		\
-		    -e 's@[#]## No-Teensy-tools flag.*$$@$(NO_TEENSY_TOOLS)@'		\
+		    -e 's@[#]## No-Teensy-gcc.*$$@$(NO_TEENSY_GCC)@'			\
+		    -e 's@[#]## Upload tool default.*$$@'"$$upltldef"'@'		\
 		    -e 's@[#]## Ardunio version.*$$@'"$$avers"'@'			\
 		    -e 's@[#]## Teensyduino version.*$$@'"$$tvers"'@'			\
 		    1>"$(PROJECT_BASE_DIR)/GNUmakefile"
