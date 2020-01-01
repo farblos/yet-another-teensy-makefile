@@ -174,13 +174,13 @@ these, you really must configure only one variable:
             TEENSY = teensy36
     ```
 
-From this variable, all following configuration variables related
-to Teensy are configured to reasonable default values (at least
+From this variable, all following variables related to the Teensy
+configuration are preset to reasonable default values (at least
 as reasonable as determined by Teensyduino's `board.txt`).  You
 can override these default values freely and at all levels, but
 you should not forget that it may be required to rebuild the
-Teensy core and your project when changing variable values.  See
-also configuration variable `DEP_MODEL`.
+Teensy core library and your project when changing Teensy
+configuration.  See also configuration variable `DEP_MODEL`.
 
 The remaining top-level configuration variables are:
 
@@ -210,14 +210,15 @@ The remaining top-level configuration variables are:
   This model is suitable if you completely maintain your project
   configuration in the YAT makefile or some project-specific
   makefile.  Whenever you update any of these to change, say, the
-  USB type, all sources will be recompiled.
+  USB type of your project, all sources will be recompiled.
 
   Dependency model `variables` triggers a complete rebuild if the
   value of any of the variables listed in configuration variable
-  `VAR_DEPS` changes.  (Which, by default, encompasses variable
+  `VAR_DEPS` changes.  (Which, by default, comprises variable
   `TEENSY` and all menu-level configuration variables.)  This
   model is suitable if you frequently change configuration
-  variables, probably even on command line level.
+  variables, probably even at command line level as in `make
+  T_USB=serialhid all`.
 
   Dependency model `always` always forces a complete rebuild.
   
@@ -235,10 +236,10 @@ The remaining top-level configuration variables are:
         make SILENT= all
     ```
 
-There are more top-level configuration variables, but they are
-less significant.  See the section tagged "top-level
-configuration variables" in the YAT makefile itself for a list of
-these.
+There are more top-level configuration variables than those
+described above, but these are less significant.  See the section
+tagged "top-level configuration variables" in the YAT makefile
+itself for a list of these.
 
 #### Menu-Level Configuration Variables
 
