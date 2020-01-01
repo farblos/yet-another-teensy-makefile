@@ -254,20 +254,20 @@ endif
 .PHONY:		$(BUILD_DIR)/vardeps.mk
 $(BUILD_DIR)/vardeps.mk:
 		@set -e; set -o pipefail;					\
-		vdsumnom=$$( echo '$(VAR_DEPS)' | md5sum );			\
-		vdsumact=$$( cat $(BUILD_DIR)/vardeps 2>/dev/null || : );	\
+		vdsumact=$$( echo '$(VAR_DEPS)' | md5sum );			\
+		vdsumnom=$$( cat $(BUILD_DIR)/vardeps 2>/dev/null || : );	\
 		if test "$$vdsumact" != "$$vdsumnom"; then			\
 		  mkdir -p "$(BUILD_DIR)";					\
-		  echo "$$vdsumnom" 1>$(BUILD_DIR)/vardeps;			\
+		  echo "$$vdsumact" 1>$(BUILD_DIR)/vardeps;			\
 		  touch "$(BUILD_DIR)/vardeps.mk";				\
 		fi
 
 # define dependency hook depending on selected dependency model
-ifeq ($(DEP_MODEL),makefiles)
+ifeq ($(DEP_MODEL), makefiles)
   DPH :=	$(filter-out $(BUILD_DIR)/%, $(MAKEFILE_LIST))
-else ifeq ($(DEP_MODEL),variables)
+else ifeq ($(DEP_MODEL), variables)
   DPH :=	$(BUILD_DIR)/vardeps
-else ifeq ($(DEP_MODEL),always)
+else ifeq ($(DEP_MODEL), always)
   DPH :=	force
 else
   DPH :=
