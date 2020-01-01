@@ -249,8 +249,8 @@ $(BUILD_DIR)/%.o: %.cpp
 
 $(BUILD_DIR)/core.a: $(TCOBJ_FILES)
 		@echo -e "[AR]\t$< ..."
-		@for tcobjfile in $^; do	\
-		  $(AR) rcs $@ "$$tcobjfile";	\
+		@for tcobjfile in $^; do			\
+		  $(AR) rcs $@ "$$tcobjfile" || exit $$?;	\
 		done
 
 $(TARGET).elf:	$(BUILD_DIR)/core.a $(OBJ_FILES)
@@ -260,7 +260,7 @@ $(TARGET).elf:	$(BUILD_DIR)/core.a $(OBJ_FILES)
 $(TARGET).hex:	$(TARGET).elf
 		@echo -e "[OC]\t$@"
 		@$(SIZE) $<
-		@$(SIZE) $< |						\
+		@-$(SIZE) $< |						\
 		awk '/^ *[0-9]+[\t ]+[0-9]+[\t ]+[0-9]+/		\
 		       { ts = $$1; ds = $$2; bs = $$3; }		\
 		     END {						\
@@ -334,7 +334,8 @@ endif
 #
 # and the sed script does some minor make-compatibility-clean-up.
 $(PROJECT_BASE_DIR)/boards.mk: $(BOARDS_TXT)
-		@cat $< |							\
+		@set -e; set -o pipefail;					\
+		cat $< |							\
 		awk 'BEGIN             { pmenu = "none"; menu = "none";  }	\
 		     /\.menu\.usb\./   { pmenu = menu; 	 menu = "usb";   }	\
 		     /\.menu\.speed\./ { pmenu = menu; 	 menu = "speed"; }	\
@@ -407,6 +408,7 @@ install:
 		rm -rf "$(TEENSY_BASE_DIR)"
 		mkdir -p "$(TEENSY_BASE_DIR)"
 		@echo 'find ... | cpio -pdm "$(TEENSY_BASE_DIR)"';		\
+		set -e; set -o pipefail;					\
 		( cd "$(ARDUINO_BASE_DIR)" &&					\
 		  find examples/Teensy						\
 		       hardware/teensy/avr -depth -print0 |			\
@@ -426,6 +428,7 @@ install:
 		  cp -p "$(PROJECT_BASE_DIR)/GNUmakefile" "$(PROJECT_BASE_DIR)/GNUmakefile.bak";	\
 		fi
 		@echo 'cat ... | sed ... 1>"$(PROJECT_BASE_DIR)/GNUmakefile"';		\
+		set -e; set -o pipefail;						\
 		avers=$$( head -1 "$(ARDUINO_BASE_DIR)/revisions.txt" );		\
 		if [[ "$$avers" =~ ^ARDUINO\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then	\
 		  avers=$$( printf '%d%02d%02d' $${BASH_REMATCH[1]}			\
