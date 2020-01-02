@@ -107,13 +107,13 @@ YAT makefile directly as needed.
   installation-time variables in it.
 
 - (If you have specified `NO_TEENSY_GCC=arm` or `...=all` above
-  and want to compile for a Teensy 3.x or 4.x board):  
+  and want to compile for a Teensy 3.x or 4.x board:)  
   Install Debian packages `gcc-arm-none-eabi`,
   `libnewlib-arm-none-eabi`, `libstdc++-arm-none-eabi-newlib`.
   Other distros may provide similar packages.
   
 - (If you have specified `NO_TEENSY_GCC=avr` or `...=all` above
-  and want to compile for a Teensy 2.x board):  
+  and want to compile for a Teensy 2.x board:)  
   Install Debian packages `gcc-avr`, `avr-libc`.  Other distros
   may provide similar packages.
 
@@ -196,10 +196,10 @@ The remaining top-level configuration variables are:
     ```
 
 - `UPLOAD_TOOL`  
-  The tool used to upload the hex file to your Teensy board.  One
-  of `tycmd`, `tlcli` (for `teensy_loader_cli` from
+  The tool used to upload hex files to your Teensy board.  One of
+  `tycmd`, `tlcli` (for `teensy_loader_cli` from
   [PaulStoffregen/teensy_loader_cli](https://github.com/PaulStoffregen/teensy_loader_cli)),
-  or `tlgui` (the vanilly Teensy loader).  To use one of the
+  or `tlgui` (the vanilla Teensy loader).  To use one of the
   former two you must have the respective tool available in your
   execution path.  The default for this variable is based on what
   is found in the execution path during execution of `make
