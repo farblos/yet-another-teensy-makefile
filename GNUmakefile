@@ -34,7 +34,7 @@ TEENSY_BASE_DIR :=	### Teensy base directory
 
 PROJECT_BASE_DIR :=	### Project base directory
 
-NO_TEENSY_GCC :=	### No-Teensy-gcc (empty, "avr", "arm", "all")
+NO_TEENSY_GCC :=	### Teensy-gcc deselection (empty, "avr", "arm", "all")
 
 UPLOAD_TOOL_DEFAULT :=	### Upload tool default ("tycmd", "tlcli", "tlgui")
 
@@ -542,6 +542,14 @@ install:
 		fi
 		@echo 'cat ... | sed ... 1>"$(PROJECT_BASE_DIR)/GNUmakefile"';		\
 		set -e; set -o pipefail;						\
+		upltldef="";								\
+		if ( tycmd ) 1>/dev/null 2>&1; then					\
+		  upltldef="tycmd";							\
+		elif ( teensy_loader_cli || : ) 2>&1 | grep -q 'www\.pjrc\.com'; then	\
+		  upltldef="tlcli";							\
+		else									\
+		  upltldef="tlgui";							\
+		fi;									\
 		avers=$$( head -1 "$(ARDUINO_BASE_DIR)/revisions.txt" );		\
 		if [[ "$$avers" =~ ^ARDUINO\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then	\
 		  avers=$$( printf '%d%02d%02d' $${BASH_REMATCH[1]}			\
@@ -556,18 +564,10 @@ install:
 		else									\
 		  tvers=100;								\
 		fi;									\
-		upltldef="";								\
-		if ( tycmd ) 1>/dev/null 2>&1; then					\
-		  upltldef="tycmd";							\
-		elif ( teensy_loader_cli || : ) 2>&1 | grep -q 'www\.pjrc\.com'; then	\
-		  upltldef="tlcli";							\
-		else									\
-		  upltldef="tlgui";							\
-		fi;									\
 		cat "$(strip $(MAKEFILE_LIST))" |					\
 		sed -e 's@[#]## Teensy base directory$$@$(TEENSY_BASE_DIR)@'		\
 		    -e 's@[#]## Project base directory$$@$(PROJECT_BASE_DIR)@'		\
-		    -e 's@[#]## No-Teensy-gcc.*$$@$(NO_TEENSY_GCC)@'			\
+		    -e 's@[#]## Teensy-gcc deselection.*$$@$(NO_TEENSY_GCC)@'		\
 		    -e 's@[#]## Upload tool default.*$$@'"$$upltldef"'@'		\
 		    -e 's@[#]## Ardunio version.*$$@'"$$avers"'@'			\
 		    -e 's@[#]## Teensyduino version.*$$@'"$$tvers"'@'			\
