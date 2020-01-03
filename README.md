@@ -1,10 +1,13 @@
-# yet-another-teensy-makefile
+# Yet Another Teensy Makefile
 
 Title says it all.
 
 Unique selling points and other facts:
 
 - Supports GNU/Linux only and requires GNU Make and GNU Bash
+
+- Lacks the Blinky example (but this readme comes with
+  instructions to set one up, anyway)
 
 - Extracts and uses compiler flags, linker flags, and other
   useful information directly from Teensyduino's `board.txt`
@@ -32,6 +35,10 @@ Unique selling points and other facts:
   Teensyduino's `boards.txt`
 
 - Tested on Debian "stretch"
+
+To get started with the YAT makefile, you should at least follow
+the instructions in sections [Installation](#installation) and
+[Example Usage](#example-usage).
 
 # Installation
 
@@ -62,6 +69,8 @@ YAT makefile directly as needed.
 
 ### Installation Instructions
 
+- Ensure you have `/etc/udev/rules.d/49-teensy.rules` in place.
+
 - Install Arduino and Teensyduino into the Arduino base directory
   `arduino-base-dir` according to their respective installation
   instructions.
@@ -86,6 +95,7 @@ YAT makefile directly as needed.
                 ARDUINO_BASE_DIR=~/arduino-1.8.10             \
                 TEENSY_BASE_DIR=~/teensy-1.48                 \
                 PROJECT_BASE_DIR=~/teensy-projects            \
+                NO_TEENSY_GCC=avr                             \
                 install
     ```
 
@@ -120,6 +130,29 @@ YAT makefile directly as needed.
 - After executing above steps, the Arduino base directory is no
   longer required for using the YAT makefile and can be removed.
 
+# Example Usage
+
+Provided you have set up your environment as explained above, the
+following steps should result in your Teensy placidly blinking:
+
+```
+    cd    <project-base-dir>
+    mkdir yet-another-blinky-example
+    cd    yet-another-blinky-example
+
+    # change variable ledPin in Blink.ino for Teensy 2.x boards
+    cp <teensy-base-dir>/examples/Teensy/Tutorial1/Blink/Blink.pde Blink.ino
+
+    # pick the ID of your board from the output below ...
+    make -f ../GNUmakefile list-teensy
+    # ... and enter it in the next command
+    echo "TEENSY=<your-teensy-id>" >> GNUmakefile
+    echo "include ../GNUmakefile"  >> GNUmakefile
+
+    # plug in your board now and ...
+    make upload
+```
+
 # Usage
 
 To use the YAT makefile in one of your projects you must
@@ -149,9 +182,17 @@ where the project-specific makefiles are structured like this:
 
 ```make
     TEENSY = teensy35
+
     # ... more configuration variables ...
+
     include ../GNUmakefile
+
+    # ... custom targets ...
 ```
+
+Note that you should specify any custom targets *after* the
+include statement of the YAT makefile to not redefine its default
+target.
 
 If you decide to directly modify the YAT makefile, keep in mind
 that target `install` overwrites any previously present YAT
@@ -182,7 +223,7 @@ configuration are preset to reasonable default values (at least
 as reasonable as determined by Teensyduino's `board.txt`).  You
 can override these default values freely and at all levels, but
 you should not forget that it may be required to rebuild the
-Teensy core library and your project when changing Teensy
+Teensy core library and your project when changing the Teensy
 configuration.  See also configuration variable `DEP_MODEL`.
 
 The remaining top-level configuration variables are:

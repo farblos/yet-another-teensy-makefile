@@ -192,6 +192,11 @@ BOARDS_TXT :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/boards.txt
 # T_LD.
 TIME_LOCAL =	$(shell date +'%s')
 
+# awkified properties platforms.txt/recipe.size.regex and
+# platforms.txt/recipe.size.regex.data
+SIZE_RE_TEXT :=	^(\.text|\.text\.progmem|\.text\.itcm|\.data)[\t ]+([0-9]+).*
+SIZE_RE_DATA :=	^(\.usbdescriptortable|\.dmabuffers|\.usbbuffers|\.data|\.bss|\.bss\.dma|\.noinit|\.text\.itcm)[\t ]+([0-9]+).*
+
 # non-clean-or-install target predicate.  This variable is
 # non-empty if the current make goal as specified on the
 # commandline is different from clean, realclean, or install (or
@@ -297,8 +302,22 @@ TCORE_DIR :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/cores/$(T_CORE)
 # Teensy additional libraries
 TLIB_DIR :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/libraries
 
-# user-required libraries with directory prepended
-TLIB_PATH :=	$(addprefix $(TLIB_DIR)/, $(LIBRARIES))
+# user-required libraries with directory prepended.  Simple for
+# new-style libraries (directory "src" and everything below it),
+# a bit more complex for old-style libraries.
+TLIB_PATH :=	$(strip							\
+		  $(foreach						\
+		    lib, $(LIBRARIES),					\
+		    $(shell test -d "$(TLIB_DIR)/$(lib)" &&		\
+		            if test -d "$(TLIB_DIR)/$(lib)/src"; then	\
+		              find "$(TLIB_DIR)/$(lib)/src" -type d;	\
+		            else					\
+		              find "$(TLIB_DIR)/$(lib)" -type d		\
+		                   ! \( -path '*/_*/*' -o		\
+		                        -path '*/examples*' -o		\
+		                        -path '*/extras*' -o		\
+		                        -path '*/test*' \);		\
+		            fi)))
 
 # toolchain executable directory
 TOOLS_DIR :=	$(TEENSY_BASE_DIR)/hardware/tools
@@ -375,19 +394,20 @@ $(TARGET).elf:	$(OBJ_FILES) $(BUILD_DIR)/core.a
 $(TARGET).hex:	$(TARGET).elf
 		@echo -e "[OC]\t$@"
 		@$(SIZE) $<
-		@-$(SIZE) $< |						\
-		awk '/^ *[0-9]+[\t ]+[0-9]+[\t ]+[0-9]+/		\
-		       { ts = $$1; ds = $$2; bs = $$3; }		\
+		@-$(SIZE) --format=sysv $< |				\
+		awk 'BEGIN { ts = 0; ds = 0; }				\
+		     /$(SIZE_RE_TEXT)/ { ts += $$2; }			\
+		     /$(SIZE_RE_DATA)/ { ds += $$2; }			\
 		     END {						\
 		       mts = "$(call xtv,upload.maximum_size)";		\
 		       if ( mts !~ /^[0-9]+$$/ ) mts = 0;		\
 		       mds = "$(call xtv,upload.maximum_data_size)";	\
 		       if ( mds !~ /^[0-9]+$$/ ) mds = 0;		\
 		       if ( mts > 0 && mds > 0 )			\
-		         printf( "Used program storage: %.1f%%, "	\
-				 "dynamic memory: %.1f%%\n",		\
-		                 (ts+ds)/mts*100.0,			\
-		                 (ds+bs)/mds*100.0 );			\
+		         printf( "Used program storage: %d (%.1f%%), "	\
+		                 "dynamic memory: %d (%.1f%%)\n",	\
+		                 ts, ts/mts*100.0,			\
+		                 ds, ds/mds*100.0 );			\
 		     }'
 		$(SILENT)$(OBJCOPY) -O ihex -R .eeprom $< $@
 
