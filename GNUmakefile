@@ -1,7 +1,7 @@
 #
 # GNUmakefile - Yet Another Teensy Makefile.
 #
-# Copyright (c) 2019 Jens Schmidt.
+# Copyright (c) 2019, 2020 Jens Schmidt.
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -38,6 +38,8 @@ NO_TEENSY_GCC :=	### Teensy-gcc deselection (empty, "avr", "arm", "all")
 
 UPLOAD_TOOL_DEFAULT :=	### Upload tool default ("tycmd", "tlcli", "tlgui")
 
+MONITOR_TOOL_DEFAULT :=	### Monitor tool default ("tycmd", "teensy")
+
 ARDUINO_VERSION :=	### Ardunio version (sans periods)
 
 TEENSYDUINO_VERSION :=	### Teensyduino version (sans periods)
@@ -50,15 +52,23 @@ TEENSYDUINO_VERSION :=	### Teensyduino version (sans periods)
 #
 
 ifeq ($(origin LIBRARIES), undefined)
-LIBRARIES :=
+LIBRARIES :=	@included-libs@
 endif
 
 ifeq ($(origin UPLOAD_TOOL), undefined)
 UPLOAD_TOOL :=	$(UPLOAD_TOOL_DEFAULT)
 endif
 
+ifeq ($(origin MONITOR_TOOL), undefined)
+MONITOR_TOOL :=	$(MONITOR_TOOL_DEFAULT)
+endif
+
 ifeq ($(origin DEF_TARGET), undefined)
 DEF_TARGET :=	build
+endif
+
+ifeq ($(origin USER_LIB_PATH), undefined)
+USER_LIB_PATH :=libraries
 endif
 
 ifeq ($(origin DEP_MODEL), undefined)
@@ -136,7 +146,7 @@ T_KEYLAYOUT ?=	$(call xkv,build.keylayout)
 CPPFLAGS ?=	$(T_DEFS) -DARDUINO=$(ARDUINO_VERSION)				\
 		-DF_CPU=$(T_FCPU) -D$(T_USBTYPE) -DLAYOUT_$(T_KEYLAYOUT)	\
 		$(DEFINES)							\
-		$(INCLUDES) -I. -I$(TCORE_DIR) $(addprefix -I, $(TLIB_PATH))
+		$(INCLUDES) -I. -I$(TCORE_DIR) $(addprefix -I, $(INC_PATH))
 
 CFLAGS ?=	$(T_OPTIMIZE) $(T_COMMON) $(T_DEP) $(T_C) $(T_CPU)
 
@@ -192,8 +202,8 @@ BOARDS_TXT :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/boards.txt
 # T_LD.
 TIME_LOCAL =	$(shell date +'%s')
 
-# awkified properties platforms.txt/recipe.size.regex and
-# platforms.txt/recipe.size.regex.data
+# awkified properties platform.txt/recipe.size.regex and
+# platform.txt/recipe.size.regex.data
 SIZE_RE_TEXT :=	^(\.text|\.text\.progmem|\.text\.itcm|\.data)[\t ]+([0-9]+).*
 SIZE_RE_DATA :=	^(\.usbdescriptortable|\.dmabuffers|\.usbbuffers|\.data|\.bss|\.bss\.dma|\.noinit|\.text\.itcm)[\t ]+([0-9]+).*
 
@@ -210,6 +220,106 @@ NCITP :=	$(strip						\
 		                    $(MAKECMDGOALS)),		\
 		       all))
 
+# resolves any special "@included-libs@" marker in the specified
+# parameters.  Caller must strip the result.
+#
+# As an example, this function resolves includes
+#
+#   #include <TimeLib.h>
+#   #include <Bounce.h>
+#   #include <Snooze.h>
+#
+# from the current sources to the list "Time Bounce Snooze"
+# because of the files
+#
+#   Time/TimeLib.h
+#   Bounce/Bounce.h
+#   Snooze/src/Snooze.h
+#
+# being present below the Teensy platform library directory.
+#
+# The call to "sort" is required to strip potential duplicate
+# libraries present both in the user library path and in the
+# Teensy platform library directory.  The reference to
+# "/dev/null" is required to not let "sed" wait on STDIN when
+# there are no source files present.
+define rslv_inc_libs
+  $(subst								\
+    @included-libs@,							\
+    $(foreach								\
+      inc, $(shell sed -ne 's/^ *\# *include *[<"]\(.*\)\.h[>"]/\1/p'	\
+                           $(SRC_FILES) /dev/null),			\
+      $(sort								\
+        $(foreach							\
+          dir, $(USER_LIB_PATH) $(TPLTF_DIR),				\
+          $(or $(patsubst $(dir)/%/src/$(inc).h, %,			\
+                          $(wildcard $(dir)/*/src/$(inc).h)),		\
+               $(patsubst $(dir)/%/$(inc).h, %,				\
+                          $(wildcard $(dir)/*/$(inc).h)))))),		\
+    $(1))
+endef
+
+# returns the first set of existing include directories from the
+# specified list of library base directories.  Distinguishes
+# between new-style and old-style libraries.  Caller must strip
+# the result.
+#
+# Here are some examples assuming that the user library path
+# equals "libraries", which contains one user library "Bounce",
+# and the Teensy platform library directory equals "/teensylibs".
+#
+# Then this function converts (potentially absent) library base
+# directories to (existing) include directories as follows:
+#
+#   libraries/Time   /teensylibs/Time   => /teensylibs/Time
+#   libraries/Bounce /teensylibs/Bounce => libraries/Bounce
+#   libraries/Snooze /teensylibs/Snooze => /teensylibs/Snooze/src
+define lib_inc_dirs
+  $(if
+    $(strip $(1)),
+    $(or
+      $(if $(and $(wildcard $(firstword $(1))/src), $(wildcard $(firstword $(1))/library.properties)),
+           $(firstword $(1))/src),
+      $(if $(wildcard $(firstword $(1))),
+           $(firstword $(1)) $(wildcard $(firstword $(1))/utility)),
+      $(call lib_inc_dirs, $(wordlist 2, $(words $(1)), $(1)))))
+endef
+
+# returns the first set of existing library directories from the
+# specified list of library base directories.  Distinguishes
+# between new-style and old-style libraries.  Caller must strip
+# the result.
+#
+# In the context of the above example, this function converts
+# (potentially absent) library base directories to (existing)
+# library directories as follows:
+#
+#   libraries/Time   /teensylibs/Time   => /teensylibs/Time
+#   libraries/Bounce /teensylibs/Bounce => libraries/Bounce
+#   libraries/Snooze /teensylibs/Snooze => /teensylibs/Snooze/src
+#                                          /teensylibs/Snooze/src/hal
+#                                          /teensylibs/Snooze/src/hal/...
+define lib_lib_dirs
+  $(if
+    $(strip $(1)),
+    $(or
+      $(if $(and $(wildcard $(firstword $(1))/src), $(wildcard $(firstword $(1))/library.properties)),
+           $(shell find "$(firstword $(1))/src" -type d)),
+      $(if $(wildcard $(firstword $(1))),
+           $(firstword $(1)) $(wildcard $(firstword $(1))/utility)),
+      $(call lib_lib_dirs, $(wordlist 2, $(words $(1)), $(1)))))
+endef
+
+# exactly-one-teensy check
+define EOTC
+		@case $$( $(TOOLS_DIR)/teensy_ports -L | wc -l ) in				\
+		  (1) : ;;									\
+		  (0) echo "No Teensy board connected." 1>&2; exit 1 ;;				\
+		  ([2-9]) echo "More than one Teensy board connected." 1>&2; exit 1 ;;		\
+		  (*) echo "Unreasonable number of Teensy boards connected." 1>&2; exit 1 ;;	\
+		esac
+endef
+
 # default target
 .PHONY:		all
 all:		$(DEF_TARGET)
@@ -221,7 +331,7 @@ force:
 # dump the value of a variable
 .PHONY:		echo.%
 echo.%:
-		@echo '$($*)'
+		@echo '<$($*)>'
 
 #
 # verify configuration variable TEENSY and determine T_CORE.
@@ -296,28 +406,37 @@ endif
 # derived paths and directories.
 #
 
-# Teensy core library
+# local source files
+INO_FILES :=	$(wildcard *.ino)
+C_FILES :=	$(wildcard *.c)
+CPP_FILES :=	$(wildcard *.cpp)
+SRC_FILES :=	$(INO_FILES) $(C_FILES) $(CPP_FILES)
+
+# Teensy core library directory
 TCORE_DIR :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/cores/$(T_CORE)
 
-# Teensy additional libraries
-TLIB_DIR :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/libraries
+# Teensy platform library directory
+TPLTF_DIR :=	$(TEENSY_BASE_DIR)/hardware/teensy/avr/libraries
 
-# user-required libraries with directory prepended.  Simple for
-# new-style libraries (directory "src" and everything below it),
-# a bit more complex for old-style libraries.
-TLIB_PATH :=	$(strip							\
+# list of include directories required to use the Teensyduino
+# libraries referenced by the user
+INC_PATH :=	$(strip							\
 		  $(foreach						\
-		    lib, $(LIBRARIES),					\
-		    $(shell test -d "$(TLIB_DIR)/$(lib)" &&		\
-		            if test -d "$(TLIB_DIR)/$(lib)/src"; then	\
-		              find "$(TLIB_DIR)/$(lib)/src" -type d;	\
-		            else					\
-		              find "$(TLIB_DIR)/$(lib)" -type d		\
-		                   ! \( -path '*/_*/*' -o		\
-		                        -path '*/examples*' -o		\
-		                        -path '*/extras*' -o		\
-		                        -path '*/test*' \);		\
-		            fi)))
+		    lib, $(call rslv_inc_libs, $(LIBRARIES)),		\
+		    $(call lib_inc_dirs,				\
+		           $(foreach					\
+		             dir, $(USER_LIB_PATH) $(TPLTF_DIR),	\
+		             $(dir)/$(lib)))))
+
+# list of library directories required to use the Teensyduino
+# libraries referenced by the user
+LIB_PATH :=	$(strip							\
+		  $(foreach						\
+		    lib, $(call rslv_inc_libs, $(LIBRARIES)),		\
+		    $(call lib_lib_dirs,				\
+		           $(foreach					\
+		             dir, $(USER_LIB_PATH) $(TPLTF_DIR),	\
+		             $(dir)/$(lib)))))
 
 # toolchain executable directory
 TOOLS_DIR :=	$(TEENSY_BASE_DIR)/hardware/tools
@@ -326,70 +445,93 @@ TOOLS_DIR :=	$(TEENSY_BASE_DIR)/hardware/tools
 # build variables and targets.
 #
 
+define compile-s
+		@echo -e "[AS]\t$<"
+		@mkdir -p "$(dir $@)"
+		$(SILENT)$(CC) $(CPPFLAGS) $(ASFLAGS) -o $@ -c $<
+endef
+
+define compile-c
+		@echo -e "[CC]\t$<"
+		@mkdir -p "$(dir $@)"
+		$(SILENT)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
+endef
+
+define compile-cpp
+		@echo -e "[CXX]\t$<"
+		@mkdir -p "$(dir $@)"
+		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
+endef
+
+define compile-ino
+		@echo -e "[CXX]\t$<"
+		@mkdir -p "$(dir $@)"
+		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -include Arduino.h -x c++ -o $@ -c $<
+endef
+
 # source files of the Teensy core library
 TCS_FILES :=	$(wildcard $(TCORE_DIR)/*.S)
 TCC_FILES :=	$(wildcard $(TCORE_DIR)/*.c)
 TCCPP_FILES :=	$(wildcard $(TCORE_DIR)/*.cpp)
 
 # object files of the Teensy core library
-TCOBJ_FILES :=	$(patsubst $(TEENSY_BASE_DIR)/%.S, $(BUILD_DIR)/%.o, $(TCS_FILES))		\
-		$(patsubst $(TEENSY_BASE_DIR)/%.c, $(BUILD_DIR)/%.o, $(TCC_FILES))		\
-		$(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(TCCPP_FILES))
+TCOBJ_FILES :=	$(patsubst $(TEENSY_BASE_DIR)/%.S,   $(BUILD_DIR)/teensy/%.o, $(TCS_FILES))	\
+		$(patsubst $(TEENSY_BASE_DIR)/%.c,   $(BUILD_DIR)/teensy/%.o, $(TCC_FILES))	\
+		$(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/teensy/%.o, $(TCCPP_FILES))
 
-# source files of the Teensy additional libraries
-TLC_FILES :=	$(foreach tldir, $(TLIB_PATH), $(wildcard $(tldir)/*.c))
-TLCPP_FILES :=	$(foreach tldir, $(TLIB_PATH), $(wildcard $(tldir)/*.cpp))
+# source files of all Teensyduino libraries referenced by the
+# user
+TLS_FILES :=	$(foreach tldir, $(LIB_PATH), $(wildcard $(tldir)/*.S))
+TLC_FILES :=	$(foreach tldir, $(LIB_PATH), $(wildcard $(tldir)/*.c))
+TLCPP_FILES :=	$(foreach tldir, $(LIB_PATH), $(wildcard $(tldir)/*.cpp))
 
-# local source files
-INO_FILES :=	$(wildcard *.ino)
-C_FILES :=	$(wildcard *.c)
-CPP_FILES :=	$(wildcard *.cpp)
+# all non-core object files
+OBJ_FILES :=	$(patsubst   %.ino,                    $(BUILD_DIR)/%.o, $(INO_FILES))		\
+		$(patsubst   %.c,                      $(BUILD_DIR)/%.o, $(C_FILES))		\
+		$(patsubst   %.cpp,                    $(BUILD_DIR)/%.o, $(CPP_FILES))		\
+		$(patsubst   %.S,                      $(BUILD_DIR)/userlib/%.o,		\
+		  $(patsubst $(TEENSY_BASE_DIR)/%.S,   $(BUILD_DIR)/teensy/%.o, $(TLS_FILES)))	\
+		$(patsubst   %.c,                      $(BUILD_DIR)/userlib/%.o,		\
+		  $(patsubst $(TEENSY_BASE_DIR)/%.c,   $(BUILD_DIR)/teensy/%.o, $(TLC_FILES)))	\
+		$(patsubst   %.cpp,                    $(BUILD_DIR)/userlib/%.o,		\
+		  $(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/teensy/%.o, $(TLCPP_FILES)))
 
-OBJ_FILES :=	$(patsubst %.ino, $(BUILD_DIR)/%.o, $(INO_FILES))				\
-		$(patsubst %.c, $(BUILD_DIR)/%.o, $(C_FILES))					\
-		$(patsubst %.cpp, $(BUILD_DIR)/%.o, $(CPP_FILES))				\
-		$(patsubst $(TEENSY_BASE_DIR)/%.c, $(BUILD_DIR)/%.o, $(TLC_FILES))		\
-		$(patsubst $(TEENSY_BASE_DIR)/%.cpp, $(BUILD_DIR)/%.o, $(TLCPP_FILES))
+$(BUILD_DIR)/teensy/%.o: $(TEENSY_BASE_DIR)/%.S $(DPH)
+		$(compile-s)
 
-$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.S $(DPH)
-		@echo -e "[AS]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CC) $(CPPFLAGS) $(ASFLAGS) -o $@ -c $<
+$(BUILD_DIR)/teensy/%.o: $(TEENSY_BASE_DIR)/%.c $(DPH)
+		$(compile-c)
 
-$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.c $(DPH)
-		@echo -e "[CC]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
+$(BUILD_DIR)/teensy/%.o: $(TEENSY_BASE_DIR)/%.cpp $(DPH)
+		$(compile-cpp)
 
-$(BUILD_DIR)/%.o: $(TEENSY_BASE_DIR)/%.cpp $(DPH)
-		@echo -e "[CXX]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
+$(BUILD_DIR)/userlib/%.o: %.S $(DPH)
+		$(compile-s)
+
+$(BUILD_DIR)/userlib/%.o: %.c $(DPH)
+		$(compile-c)
+
+$(BUILD_DIR)/userlib/%.o: %.cpp $(DPH)
+		$(compile-cpp)
 
 $(BUILD_DIR)/%.o: %.ino $(DPH)
-		@echo -e "[CXX]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -include Arduino.h -x c++ -o $@ -c $<
+		$(compile-ino)
 
 $(BUILD_DIR)/%.o: %.c $(DPH)
-		@echo -e "[CC]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
+		$(compile-c)
 
 $(BUILD_DIR)/%.o: %.cpp $(DPH)
-		@echo -e "[CXX]\t$<"
-		@mkdir -p "$(dir $@)"
-		$(SILENT)$(CXX) $(CPPFLAGS) $(CXXFLAGS) -o $@ -c $<
+		$(compile-cpp)
 
-$(BUILD_DIR)/core.a: $(TCOBJ_FILES)
+$(BUILD_DIR)/libcore.a: $(TCOBJ_FILES)
 		@echo -e "[AR]\t$< ..."
 		@for tcobjfile in $^; do			\
 		  $(AR) rcs $@ "$$tcobjfile" || exit $$?;	\
 		done
 
-$(TARGET).elf:	$(OBJ_FILES) $(BUILD_DIR)/core.a
+$(TARGET).elf:	$(OBJ_FILES) $(BUILD_DIR)/libcore.a
 		@echo -e "[LD]\t$@"
-		$(SILENT)$(CC) $(LDFLAGS) -o $@ $(OBJ_FILES) $(BUILD_DIR)/core.a $(T_LIBS) $(LDLIBS)
+		$(SILENT)$(CC) $(LDFLAGS) -o $@ $(OBJ_FILES) $(BUILD_DIR)/libcore.a $(T_LIBS) $(LDLIBS)
 
 $(TARGET).hex:	$(TARGET).elf
 		@echo -e "[OC]\t$@"
@@ -417,12 +559,29 @@ build:		$(TARGET).hex
 .PHONY:		upload
 upload:		$(TARGET).hex
 ifeq ($(UPLOAD_TOOL), tycmd)
+		$(EOTC)
 		tycmd upload $<
 else ifeq ($(UPLOAD_TOOL), tlcli)
+		$(EOTC)
 		teensy_loader_cli --mcu "$(call xtv,build.mcu)" -v -w $<
-else
+else ifeq ($(UPLOAD_TOOL), tlgui)
+		$(EOTC)
 		$(TOOLS_DIR)/teensy_post_compile -file=$(TARGET) -path=$(CURDIR) -tools=$(TOOLS_DIR)
 		$(TOOLS_DIR)/teensy_reboot
+else
+		$(UPLOAD_TOOL)
+endif
+
+.PHONY:		monitor
+monitor:
+ifeq ($(MONITOR_TOOL), tycmd)
+		$(EOTC)
+		tycmd monitor
+else ifeq ($(MONITOR_TOOL), teensy)
+		$(EOTC)
+		$(TOOLS_DIR)/teensy_serialmon "$$( $(TOOLS_DIR)/teensy_ports -L | awk '{ print $$1 }' )"
+else
+		$(MONITOR_TOOL)
 endif
 
 clean::
@@ -468,6 +627,7 @@ $(PROJECT_BASE_DIR)/boards.mk: $(BOARDS_TXT)
 		     /\.menu\.speed\./ { pmenu = menu; 	 menu = "speed"; }	\
 		     /\.menu\.opt\./   { pmenu = menu; 	 menu = "opt";   }	\
 		     /\.menu\.keys\./  { pmenu = menu; 	 menu = "keys";  }	\
+		     /^ *#/ { next; }						\
                      { print; }							\
                      /\.menu\./ && (menu != pmenu) {				\
                        sub( /=.*$$/, "", $$0 );   key = $$0;			\
@@ -488,7 +648,7 @@ realclean::	clean
 .PHONY:		list-teensy
 list-teensy:
 		@echo "Valid values for variables TEENSY:"
-		@sed -n -e 's/^\([^.]*\)\.name=\(.*\)$$/\2:\n    TEENSY = \1/p' "$(BOARDS_TXT)"
+		@sed -n -e '/^ *#/d; s/^\([^.]*\)\.name=\(.*\)$$/\2:\n    TEENSY = \1/p' "$(BOARDS_TXT)"
 
 .PHONY:		list-usb
 list-usb:
@@ -523,6 +683,10 @@ install:
 		  varname=$${varspec%%=*}; varval=$${varspec#*=};			\
 		  if [[ "$$varspec" != *_BASE_DIR=/* ]]; then				\
 		    echo "Invalid $$varname = \"$$varval\" (non-absolute)." 1>&2;	\
+		    exit 1;								\
+		  fi;									\
+		  if [[ "$$varspec" = *[\ \	]* ]]; then				\
+		    echo "Invalid $$varname = \"$$varval\" (contains ws)." 1>&2;	\
 		    exit 1;								\
 		  fi;									\
 		  if test "$$varname" = "ARDUINO_BASE_DIR" &&				\
@@ -563,12 +727,16 @@ install:
 		@echo 'cat ... | sed ... 1>"$(PROJECT_BASE_DIR)/GNUmakefile"';		\
 		set -e; set -o pipefail;						\
 		upltldef="";								\
+		mtrtldef="";								\
 		if ( tycmd ) 1>/dev/null 2>&1; then					\
 		  upltldef="tycmd";							\
+		  mtrtldef="tycmd";							\
 		elif ( teensy_loader_cli || : ) 2>&1 | grep -q 'www\.pjrc\.com'; then	\
 		  upltldef="tlcli";							\
+		  mtrtldef="teensy";							\
 		else									\
 		  upltldef="tlgui";							\
+		  mtrtldef="teensy";							\
 		fi;									\
 		avers=$$( head -1 "$(ARDUINO_BASE_DIR)/revisions.txt" );		\
 		if [[ "$$avers" =~ ^ARDUINO\ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then	\
@@ -589,6 +757,7 @@ install:
 		    -e 's@[#]## Project base directory$$@$(PROJECT_BASE_DIR)@'		\
 		    -e 's@[#]## Teensy-gcc deselection.*$$@$(NO_TEENSY_GCC)@'		\
 		    -e 's@[#]## Upload tool default.*$$@'"$$upltldef"'@'		\
+		    -e 's@[#]## Monitor tool default.*$$@'"$$mtrtldef"'@'		\
 		    -e 's@[#]## Ardunio version.*$$@'"$$avers"'@'			\
 		    -e 's@[#]## Teensyduino version.*$$@'"$$tvers"'@'			\
 		    1>"$(PROJECT_BASE_DIR)/GNUmakefile"
