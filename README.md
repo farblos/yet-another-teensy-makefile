@@ -9,22 +9,18 @@ Unique selling points and other facts:
 - Lacks the Blinky example (but this readme comes with
   instructions to set one up, anyway)
 
-- Extracts and uses compiler flags, linker flags, and other
-  useful information directly from Teensyduino's `board.txt`
-
-- Keeps all that information overridable at different levels of
-  granularity
-
-- Handles the assembler files that come in recent Teensy core
-  libraries
-
-- Natively supports upload with `tycmd` from
+- Natively supports upload and monitoring with `tycmd` from
   [Koromix/tytools](https://github.com/Koromix/tytools) (no big
   deal, but looks nice in this list, anyway)
 
 - Comes with instructions and procedures to set up a minimum
   Teensy development environment from a full Arduino and
   Teensyduino installation
+
+- Extracts and uses compiler flags, linker flags, and other
+  useful information directly from Teensyduino's `board.txt` and
+  keeps all that information overridable at different levels of
+  granularity
 
 - Initially based on and inspired by
   [apmorton/teensy-template](https://github.com/apmorton/teensy-template)
@@ -88,13 +84,14 @@ YAT makefile directly as needed.
     ```
 
   where all `*-base-dir` placeholders must be specified as
-  absolute directory paths, like in the following example:
+  absolute directory paths not containing any white space, like
+  in the following example:
   
     ```
         make -f ~/git/yet-another-teensy-makefile/GNUmakefile \
-                ARDUINO_BASE_DIR=~/arduino-1.8.10             \
-                TEENSY_BASE_DIR=~/teensy-1.48                 \
-                PROJECT_BASE_DIR=~/teensy-projects            \
+                ARDUINO_BASE_DIR=~/arduino-1.8.12             \
+                TEENSY_BASE_DIR=~/teensy-1.51                 \
+                PROJECT_BASE_DIR=~/work/teensy                \
                 NO_TEENSY_GCC=avr                             \
                 install
     ```
@@ -190,14 +187,19 @@ where the project-specific makefiles are structured like this:
     # ... custom targets ...
 ```
 
-Note that you should specify any custom targets *after* the
-include statement of the YAT makefile to not redefine its default
-target.
+Some notes and caveats:
 
-If you decide to directly modify the YAT makefile, keep in mind
-that target `install` overwrites any previously present YAT
-makefile in your project base directory.  (It keeps one backup of
-the old YAT makefile, though.)
+- If you decide to directly modify the YAT makefile, keep in mind
+  that target `install` overwrites any previously present YAT
+  makefile in your project base directory.  (It keeps one backup
+  of the old YAT makefile, though.)
+
+- In project-specific makefiles, you should specify any custom
+  targets *after* the include statement of the YAT makefile to
+  not redefine its default target.
+
+- Regardless of your setup, you must not use any file or
+  directory names containing white space with the YAT makefile.
 
 ### Configuration Variables
 
@@ -236,19 +238,50 @@ The remaining top-level configuration variables are:
         LIBRARIES = LiquidCrystal Wire
     ```
 
+  Any item `@included-libs@` in this variables is replaced
+  dynamically by the Teensyduino libraries which are referenced
+  as `#include` statements in your sources.  So if this variable
+  consists of the single item `@included-libs@` (which is the
+  default value), and you include files
+  
+    ```cpp
+        #include <LiquidCrystal.h>
+        #include <Wire.h>
+    ```
+
+  in your sources, the YAT makefile automatically does the right
+  things to compile and include the corresponding Teensyduino
+  libraries.
+
 - `UPLOAD_TOOL`  
   The tool used to upload hex files to your Teensy board.  One of
   `tycmd`, `tlcli` (for `teensy_loader_cli` from
   [PaulStoffregen/teensy_loader_cli](https://github.com/PaulStoffregen/teensy_loader_cli)),
-  or `tlgui` (the vanilla Teensy loader).  To use one of the
-  former two you must have the respective tool available in your
-  execution path.  The default for this variable is based on what
-  is found in the execution path during execution of `make
-  install`.
+  or `tlgui` (the vanilla Teensy loader).  Any other value is
+  considered to be a verbatim upload command and executed as
+  such.  To use one of the former two options you must have the
+  respective tool available in your execution path.  The default
+  for this variable is based on what is found in the execution
+  path during execution of `make install`.
+
+- `MONITOR_TOOL`  
+  The tool used to monitor your Teensy board.  One of `tycmd` or
+  `teensy` (for an appropriately called `teensy_serialmon`).  Any
+  other value is considered to be a verbatim monitor command and
+  executed as such.  To use the first option you must have
+  `tycmd` available in your execution path.  The default for this
+  variable is based on what is found in the execution path during
+  execution of `make install`.
 
 - `DEF_TARGET`  
-  The default target triggered by a plain `make` or a `make all`.
-  Reasonable values are `build` (the default) and `upload`.
+  The default target(s) triggered by a plain `make` or a `make
+  all`.  Reasonable values are `build` (the default), `upload`,
+  or `upload monitor`.
+
+- `USER_LIB_PATH`  
+  A list of directories to look up user-provided libraries.  The
+  YAT makefile uses these in preference to the libraries that
+  come with Teensyduino itself.  Default value is `libraries`.
 
 - `DEP_MODEL`  
   The dependency model used by the YAT makefile.
@@ -435,3 +468,10 @@ Still later I came across
 [fkmclane/teensy-makefile](https://github.com/fkmclane/teensy-makefile),
 which also accesses `boards.txt` to do its job, but not for all
 Teensyduino's menus.
+
+Finally I noticed that
+[sudar/Arduino-Makefile](https://github.com/sudar/Arduino-Makefile),
+which I have been previously using for some Arduino projects,
+also can do the Teensy.  But at that time most of the YAT
+makefile was written already, and written more succinct and less
+chatty.
